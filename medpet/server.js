@@ -1,97 +1,125 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import express from "express";
 import axios from "axios";
-import 'dotenv/config';
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-const { WEBHOOK_VERIFY_TOKEN, GRAPH_API_TOKEN, PORT } = process.env;
+const {
+  WEBHOOK_VERIFY_TOKEN,
+  API_TOKEN,
+  BUSINESS_PHONE,
+  API_VERSION,
+  PORT
+} = process.env;
+
+console.log("TOKEN cargado:", API_TOKEN ? "SI" : "NO");
+
+/*
+|--------------------------------------------------------------------------
+| RECIBE MENSAJES DE WHATSAPP
+|--------------------------------------------------------------------------
+*/
 
 app.post("/webhook", async (req, res) => {
-  // log incoming messages
-  console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
 
-  // check if the webhook request contains a message
-  // details on WhatsApp text message payload:
-  // https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
+  console.log(
+    "Incoming webhook message:",
+    JSON.stringify(req.body, null, 2)
+  );
 
-  const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
+  const message =
+    req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-  // check if the incoming message contains text
   if (message?.type === "text") {
 
-    // extract the business number to send the reply from it
-    const business_phone_number_id =
-      req.body.entry?.[0].changes?.[0].value?.metadata?.phone_number_id;
+    try {
 
-    // send a reply message
-    await axios({
-      method: "POST",
-      url: `https://graph.facebook.com/v18.0/${business_phone_number_id}/messages`,
-      headers: {
-        Authorization: `Bearer ${GRAPH_API_TOKEN}`,
-      },
-      data: {
-        messaging_product: "whatsapp",
-        to: message.from,
-        text: { body: "Echo: " + message.text.body },
-        context: {
-          message_id: message.id,
+      await axios({
+        method: "POST",
+        url: `https://graph.facebook.com/${API_VERSION}/${BUSINESS_PHONE}/messages`,
+        headers: {
+          Authorization: `Bearer ${API_TOKEN}`,
+          "Content-Type": "application/json"
         },
-      },
-    });
+        data: {
+          messaging_product: "whatsapp",
+          to: message.from,
+          text: {
+            body: "Echo: " + message.text.body
+          }
+        }
+      });
 
-    // mark incoming message as read
-    await axios({
-      method: "POST",
-      url: `https://graph.facebook.com/v18.0/${business_phone_number_id}/messages`,
-      headers: {
-        Authorization: `Bearer ${GRAPH_API_TOKEN}`,
-      },
-      data: {
-        messaging_product: "whatsapp",
-        status: "read",
-        message_id: message.id,
-      },
-    });
+      console.log("Mensaje enviado correctamente");
+
+    } catch (error) {
+
+      console.log("ERROR META:");
+
+      if (error.response) {
+        console.log(error.response.data);
+      } else {
+        console.log(error.message);
+      }
+
+    }
+
   }
 
   res.sendStatus(200);
+
 });
 
 
-// accepts GET requests at the /webhook endpoint
-// you need this URL to setup webhook initially
+/*
+|--------------------------------------------------------------------------
+| VERIFICACION DEL WEBHOOK
+|--------------------------------------------------------------------------
+*/
+
 app.get("/webhook", (req, res) => {
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  // check the mode and token sent are correct
   if (mode === "subscribe" && token === WEBHOOK_VERIFY_TOKEN) {
 
-    // respond with 200 OK and challenge token from the request
+    console.log("Webhook verificado correctamente");
+
     res.status(200).send(challenge);
-    console.log("Webhook verified successfully!");
 
   } else {
-    // respond with '403 Forbidden' if verify tokens do not match
+
     res.sendStatus(403);
+
   }
+
 });
+
+
+/*
+|--------------------------------------------------------------------------
+| PAGINA PRINCIPAL
+|--------------------------------------------------------------------------
+*/
 
 app.get("/", (req, res) => {
-  res.send("<pre>Nothing to see here. Checkout README.md to start.</pre>");
+  res.send("WhatsApp Bot funcionando");
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| INICIAR SERVIDOR
+|--------------------------------------------------------------------------
+*/
+
 app.listen(PORT, () => {
-  console.log(`Server is listening on port: ${PORT}`);
+
+  console.log("Servidor corriendo en puerto:", PORT);
+
 });
